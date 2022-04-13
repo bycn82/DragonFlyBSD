@@ -12,8 +12,9 @@
 #include <sys/rwlock.h>
 #include <sys/queue.h>
 #include <netinet/in.h>
-#include <crypto/siphash/siphash.h>
-#include "crypto.h"
+
+#include "crypto/siphash/siphash.h"
+#include "crypto/crypto.h"
 
 #define COOKIE_MAC_SIZE		16
 #define COOKIE_KEY_SIZE		32

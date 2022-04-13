@@ -11,7 +11,7 @@
 #include <sys/time.h>
 #include <sys/rwlock.h>
 
-#include "crypto.h"
+#include "crypto/crypto.h"
 
 #define NOISE_PUBLIC_KEY_LEN	CURVE25519_KEY_SIZE
 #define NOISE_SYMMETRIC_KEY_LEN	CHACHA20POLY1305_KEY_SIZE

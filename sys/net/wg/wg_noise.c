@@ -14,9 +14,9 @@
 #include <sys/epoch.h>
 #include <sys/ck.h>
 #include <sys/endian.h>
-#include <crypto/siphash/siphash.h>
 
-#include "crypto.h"
+#include "crypto/siphash/siphash.h"
+#include "crypto/crypto.h"
 #include "wg_noise.h"
 #include "support.h"
 
