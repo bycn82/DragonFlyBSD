@@ -42,15 +42,13 @@
  */
 
 #include <sys/cdefs.h>
-__FBSDID("$FreeBSD$");
-
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/systm.h>
 #include <sys/libkern.h>
 #include <sys/endian.h>
 
-#include <crypto/siphash/siphash.h>
+#include "siphash.h"
 
 static void	SipRounds(SIPHASH_CTX *ctx, int final);
 

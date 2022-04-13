@@ -7,14 +7,11 @@
 #ifndef __COOKIE_H__
 #define __COOKIE_H__
 
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/rwlock.h>
-#include <sys/queue.h>
 #include <netinet/in.h>
 
 #include "crypto/siphash/siphash.h"
 #include "crypto/crypto.h"
+#include "wg_dragonflybsd.h"
 
 #define COOKIE_MAC_SIZE		16
 #define COOKIE_KEY_SIZE		32
@@ -33,21 +30,21 @@ struct cookie_maker {
 	uint8_t		cm_mac1_key[COOKIE_KEY_SIZE];
 	uint8_t		cm_cookie_key[COOKIE_KEY_SIZE];
 
-	struct rwlock	cm_lock;
+	struct lock	cm_lock;
 	bool		cm_cookie_valid;
 	uint8_t		cm_cookie[COOKIE_COOKIE_SIZE];
-	sbintime_t	cm_cookie_birthdate;	/* sbinuptime */
+	struct timespec	cm_cookie_birthdate;	
 	bool		cm_mac1_sent;
 	uint8_t		cm_mac1_last[COOKIE_MAC_SIZE];
 };
 
 struct cookie_checker {
-	struct rwlock	cc_key_lock;
+	struct lock	cc_key_lock;
 	uint8_t		cc_mac1_key[COOKIE_KEY_SIZE];
 	uint8_t		cc_cookie_key[COOKIE_KEY_SIZE];
 
-	struct mtx	cc_secret_mtx;
-	sbintime_t	cc_secret_birthdate;	/* sbinuptime */
+	struct lock	cc_secret_lock;
+	struct timespec	cc_secret_birthdate;
 	uint8_t		cc_secret[COOKIE_SECRET_SIZE];
 };
 
@@ -67,8 +64,7 @@ int	cookie_maker_consume_payload(struct cookie_maker *,
 void	cookie_maker_mac(struct cookie_maker *, struct cookie_macs *,
 	    void *, size_t);
 int	cookie_checker_validate_macs(struct cookie_checker *,
-	    struct cookie_macs *, void *, size_t, bool, struct sockaddr *,
-	    struct vnet *);
+	    struct cookie_macs *, void *, size_t, bool, struct sockaddr *);
 
 #ifdef SELFTESTS
 bool	cookie_selftest(void);

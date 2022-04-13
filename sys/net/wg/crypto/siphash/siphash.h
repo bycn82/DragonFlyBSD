@@ -26,7 +26,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD$
  */
 
 /*
@@ -64,6 +63,7 @@ typedef struct _SIPHASH_CTX {
 	uint8_t		initialized;
 } SIPHASH_CTX;
 
+#define __min_size(x) (x)
 
 #define SipHash24_Init(x)	SipHash_InitX((x), 2, 4)
 #define SipHash48_Init(x)	SipHash_InitX((x), 4, 8)

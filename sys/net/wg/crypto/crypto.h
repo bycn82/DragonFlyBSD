@@ -8,6 +8,7 @@
 
 #include <sys/types.h>
 #include <sys/mbuf.h>
+#include <sys/libkern.h>
 
 enum chacha20poly1305_lengths {
 	XCHACHA20POLY1305_NONCE_SIZE = 24,
@@ -105,7 +106,7 @@ static inline void curve25519_clamp_secret(uint8_t secret[static CURVE25519_KEY_
 
 static inline void curve25519_generate_secret(uint8_t secret[CURVE25519_KEY_SIZE])
 {
-	arc4random_buf(secret, CURVE25519_KEY_SIZE);
+	karc4rand(secret, CURVE25519_KEY_SIZE);
 	curve25519_clamp_secret(secret);
 }
 
