@@ -19,6 +19,9 @@
 #ifndef __IF_WG_H__
 #define __IF_WG_H__
 
+#include <net/if.h>
+#include <netinet/in.h>
+
 #define WG_KEY_SIZE	32
 struct wg_timespec64 {
 	uint64_t	tv_sec;
@@ -30,9 +33,7 @@ struct wg_aip_io {
 	uint32_t		a_cidr;
 	union wg_aip_addr{
 		struct in_addr	in;
-#ifdef INET6
 		struct in6_addr	in6;
-#endif
 	}	a_addr;
 };
 
@@ -40,13 +41,11 @@ struct wg_peer_io {
 	int			p_flags;
 	uint8_t			p_public[WG_KEY_SIZE];
 	uint8_t			p_psk[WG_KEY_SIZE];
-	uint16_t		p_pka;
-	sa_family_t		p_af;
+	uint16_t		p_pki;
 	union {
+		struct sockaddr 	p_sa;
 		struct sockaddr_in	p_sin;
-#ifdef INET6
 		struct sockaddr_in6	p_sin6;
-#endif
 	}			p_endpoint;
 	uint64_t		p_txbytes;
 	uint64_t		p_rxbytes;
@@ -57,10 +56,9 @@ struct wg_peer_io {
 
 #define WG_IO_PEER_PUBLIC		(1 << 0)
 #define WG_IO_PEER_PSK			(1 << 1)
-#define WG_IO_PEER_ENDPOINT		(1 << 2)
-#define WG_IO_PEER_REPLACE_AIPS		(1 << 3)
-#define WG_IO_PEER_REMOVE		(1 << 4)
-#define WG_IO_PEER_PKI			(1 << 5)
+#define WG_IO_PEER_REPLACE_AIPS		(1 << 2)
+#define WG_IO_PEER_REMOVE		(1 << 3)
+#define WG_IO_PEER_PKI			(1 << 4)
 
 struct wg_interface_io {
 	uint8_t			i_flags;

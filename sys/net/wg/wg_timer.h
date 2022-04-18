@@ -14,4 +14,13 @@ timer_expired(struct timespec *timer, uint32_t sec, uint32_t nsec)
 	return timespeccmp(&uptime, &expire, >) ? ETIMEDOUT : 0;
 }
 
+static inline long
+get_nsec(void)
+{
+	struct timespec uptime;
+	nanouptime(&uptime);
+	return uptime.tv_sec * NSEC_PER_SEC + uptime.tv_nsec;
+
+}
+
 #endif /* __WG_TIMER_H__ */

@@ -6,10 +6,12 @@
 #include <sys/types.h>
 #include <sys/malloc.h>
 #include <sys/kernel.h>
-#include <sys/taskqueue.h>
 #include <sys/lock.h>
 #include <sys/thread2.h>
 #include <machine/atomic.h>
+#include <netinet/in.h>
+
+#include "wg_debug.h"
 
 #define WG_MALLOC_DEFINE()		MALLOC_DEFINE(M_WG, "WG", "wg")
 #define WG_MALLOC(_size)		kmalloc(_size, M_WG, M_NOWAIT | M_ZERO)
@@ -23,21 +25,20 @@
 #define WG_COOKIE_MALLOC(_size)		kmalloc(_size, M_WG_COOKIE, M_NOWAIT | M_ZERO)
 #define WG_COOKIE_FREE(_p)		kfree(_p, M_WG_COOKIE)
 
-static inline void 
-wg_empty_func(void){
-};
-
-#define WG_TASKQUEUE_DEFINE()			TASKQUEUE_DEFINE(wg_tq, NULL, NULL, wg_empty_func())
-#define WG_TASK_INIT(_task, _func, _ctx)	TASK_INIT(&(_task), 0, (task_fn_t*)(_func), _ctx)
-#define WG_TASK_DRAIN(_task)			taskqueue_drain(taskqueue_wg_tq, &(_task))
-#define WG_TASK_ENQUEUE(_task)			taskqueue_enqueue(taskqueue_wg_tq, &(_task))
-#define WG_TASK_PENDING(_task)			((_task).ta_pending != 0)
-
 #define WG_LOCK_INIT(_lk, _msg)		lockinit(_lk, _msg, 0, LK_CANRECURSE)
 #define WG_LOCK_UNINIT(_lk)		lockuninit(_lk)
-#define WG_LOCK(_lk)			lockmgr(_lk, LK_EXCLUSIVE)
-#define WG_SLOCK(_lk)			lockmgr(_lk, LK_SHARED)
-#define WG_UNLOCK(_lk)			lockmgr(_lk, LK_RELEASE)
+#define WG_LOCK(_lk) { \
+	wg_debug_lock("lock[E] %s", #_lk); \
+	lockmgr(_lk, LK_EXCLUSIVE);\
+}
+#define WG_SLOCK(_lk) { \
+	wg_debug_lock("lock[S] %s", #_lk); \
+	lockmgr(_lk, LK_SHARED); \
+}
+#define WG_UNLOCK(_lk)	{ \
+	wg_debug_lock("unlock %s", #_lk); \
+	lockmgr(_lk, LK_RELEASE); \
+}
 
 #define MPASS(ex)	\
 	 KASSERT((ex), ("Assertion %s failed at %s:%d", #ex, __FILE__, __LINE__))
@@ -78,7 +79,6 @@ wg_empty_func(void){
 	}\
 }
 
-
 static inline bool
 refcount_acquire_if_not_zero(volatile u_int *count)
 {
@@ -94,7 +94,11 @@ refcount_acquire_if_not_zero(volatile u_int *count)
 	}
 }
 
-// TODO
 #define explicit_bzero(a,b)  bzero(a,b)
 
+#define M_PROTOFLAGS M_PROTO1 | M_PROTO2 | M_PROTO3 | M_PROTO4 |  \
+		     M_PROTO5 | M_PROTO6 | M_PROTO7 | M_PROTO8
+
 #endif /* __WG_DRAGONFLYBSD_H__ */
+
+
