@@ -9,6 +9,10 @@
 
 #include "crypto/crypto.h"
 
+#ifndef _KERNEL
+#error "This file should not be included by userland programs."
+#endif
+
 #define NOISE_PUBLIC_KEY_LEN	CURVE25519_KEY_SIZE
 #define NOISE_SYMMETRIC_KEY_LEN	CHACHA20POLY1305_KEY_SIZE
 #define NOISE_TIMESTAMP_LEN	(sizeof(uint64_t) + sizeof(uint32_t))
@@ -123,9 +127,5 @@ int	noise_consume_response(
 	    uint32_t r_idx,
 	    uint8_t ue[NOISE_PUBLIC_KEY_LEN],
 	    uint8_t en[0 + NOISE_AUTHTAG_LEN]);
-
-#ifdef SELFTESTS
-bool	noise_counter_selftest(void);
-#endif /* SELFTESTS */
 
 #endif /* __NOISE_H__ */

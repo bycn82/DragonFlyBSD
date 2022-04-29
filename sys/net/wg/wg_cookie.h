@@ -13,6 +13,10 @@
 #include "crypto/crypto.h"
 #include "wg_dragonflybsd.h"
 
+#ifndef _KERNEL
+#error "This file should not be included by userland programs."
+#endif
+
 #define COOKIE_MAC_SIZE		16
 #define COOKIE_KEY_SIZE		32
 #define COOKIE_NONCE_SIZE	XCHACHA20POLY1305_NONCE_SIZE
@@ -65,9 +69,5 @@ void	cookie_maker_mac(struct cookie_maker *, struct cookie_macs *,
 	    void *, size_t);
 int	cookie_checker_validate_macs(struct cookie_checker *,
 	    struct cookie_macs *, void *, size_t, bool, struct sockaddr *);
-
-#ifdef SELFTESTS
-bool	cookie_selftest(void);
-#endif /* SELFTESTS */
 
 #endif /* __COOKIE_H__ */

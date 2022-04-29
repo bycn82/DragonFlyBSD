@@ -3,6 +3,10 @@
 
 #include <sys/time.h>
 
+#ifndef _KERNEL
+#error "This file should not be included by userland programs."
+#endif
+
 #define NSEC_PER_SEC 1000000000L
 static inline int
 timer_expired(struct timespec *timer, uint32_t sec, uint32_t nsec)

@@ -13,6 +13,10 @@
 
 #include "wg_debug.h"
 
+#ifndef _KERNEL
+#error "This file should not be included by userland programs."
+#endif
+
 #define WG_MALLOC_DEFINE()		MALLOC_DEFINE(M_WG, "WG", "wg")
 #define WG_MALLOC(_size)		kmalloc(_size, M_WG, M_NOWAIT | M_ZERO)
 #define WG_FREE(_p)			kfree(_p, M_WG)

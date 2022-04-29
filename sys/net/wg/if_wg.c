@@ -77,7 +77,6 @@
 #define WG_PKT_DATA htole32(4)
 
 #define WG_PKT_PADDING		16
-#define WG_KEY_SIZE		32
 
 #define WG_TASKQUEUE taskqueue_swi
 #define WG_TASK_INIT(task, func, ctx) TASK_INIT(task, 0, func, ctx)
@@ -2313,8 +2312,9 @@ wgc_set(struct wg_softc *sc, struct wg_data_io *wgd)
 			goto error;
 	}
 
+	peer_u = &iface_u->i_peers[0];
 	for(i=0; i<iface_io.i_peers_count; i++) {
-		peer_u = &iface_u->i_peers[i];
+		need_insert = false;
 		if ((ret = copyin(peer_u, &peer_io, sizeof(peer_io))) != 0)
 			goto error;
 
@@ -2325,7 +2325,7 @@ wgc_set(struct wg_softc *sc, struct wg_data_io *wgd)
 
 		if (noise_local_keys(sc->sc_local, public, NULL) == 0 &&
 			bcmp(public, peer_io.p_public, WG_KEY_SIZE) == 0)
-			continue;
+			goto next_peer;
 
 		if ((remote = noise_remote_lookup(sc->sc_local, peer_io.p_public)) != NULL)
 			peer = noise_remote_arg(remote);
@@ -2335,7 +2335,7 @@ wgc_set(struct wg_softc *sc, struct wg_data_io *wgd)
 				wg_peer_destroy(peer);
 				noise_remote_put(remote);
 			}
-			continue;
+			goto next_peer;
 		}
 
 		if (peer_io.p_flags & WG_IO_PEER_REPLACE_AIPS && peer != NULL)
@@ -2349,43 +2349,40 @@ wgc_set(struct wg_softc *sc, struct wg_data_io *wgd)
 			need_insert = true;
 		}
 
-		memcpy(&peer->p_endpoint.e_remote, &peer_io.p_endpoint, 
-			sizeof(peer->p_endpoint.e_remote));
+		if (peer_io.p_flags & WG_IO_PEER_ENDPOINT)
+			memcpy(&peer->p_endpoint.e_remote, &peer_io.p_endpoint,
+				sizeof(peer->p_endpoint.e_remote));
 
 		if (peer_io.p_flags & WG_IO_PEER_PSK)
 			noise_remote_set_psk(peer->p_remote, peer_io.p_psk);
 
-		if (peer_io.p_flags & WG_IO_PEER_PKI) {
-			if (peer_io.p_pki > UINT16_MAX) {
+		if (peer_io.p_pki > UINT16_MAX) {
+			ret = EINVAL;
+			goto error;
+		}
+		wg_timers_set_persistent_keepalive(peer, peer_io.p_pki);
+
+		aip_u = &peer_u->p_aips[0];
+		for (j=0; j<peer_io.p_aips_count; j++) {
+			if ((ret = copyin(aip_u, &aip_io, sizeof(aip_io))) != 0)
+				goto error;
+			if (aip_io.a_cidr > 32 ) {
 				ret = EINVAL;
 				goto error;
 			}
-			wg_timers_set_persistent_keepalive(peer, peer_io.p_pki);
-		}
-
-		if (peer_io.p_flags & WG_IO_PEER_REPLACE_AIPS) {
-			aip_u = &peer_u->p_aips[0];
-			for (j=0; j<peer_io.p_aips_count; j++) {
-				if ((ret = copyin(aip_u, &aip_io, sizeof(aip_io))) != 0)
-					goto error;
-				if (aip_io.a_cidr > 32 ) {
-					ret = EINVAL;
-					goto error;
-				}
-				if (aip_io.a_af != AF_INET
-#ifdef INET6
-					&& aip_io.a_af != AF_INET6
+			if (aip_io.a_af != AF_INET
+#ifdef INET
+				&& aip_io.a_af != AF_INET6
 #endif
-				) {
-					aip_u++;
-					continue;
-				}
-
-				if ((ret = wg_aip_add(sc, peer, aip_io.a_af, 
-					&aip_io.a_addr, aip_io.a_cidr)) != 0)
-						goto error;
+			) {
 				aip_u++;
+				continue;
 			}
+
+			if ((ret = wg_aip_add(sc, peer, aip_io.a_af,
+				&aip_io.a_addr, aip_io.a_cidr)) != 0)
+				goto error;
+			aip_u++;
 		}
 
 		if (need_insert) {
@@ -2402,6 +2399,12 @@ wgc_set(struct wg_softc *sc, struct wg_data_io *wgd)
 
 		if (remote != NULL)
 			noise_remote_put(remote);
+		peer_u = (struct wg_peer_io *)aip_u;
+		continue;
+next_peer:
+		aip_u = &peer_u->p_aips[0];
+		aip_u += peer_io.p_aips_count;
+		peer_u = (struct wg_peer_io *)aip_u;
 
 	}
 	goto ok;
@@ -2468,13 +2471,15 @@ wgc_get(struct wg_softc *sc, struct wg_data_io *wgd)
 		bzero(&peer_io, sizeof(peer_io));
 
 		peer_io.p_pki = peer->p_persistent_keepalive_interval;
-		memcpy(&peer_io.p_endpoint, &peer->p_endpoint.e_remote,
-			sizeof(peer_io.p_endpoint));
 		peer_io.p_txbytes = peer->p_tx_bytes;
 		peer_io.p_rxbytes = peer->p_rx_bytes;
 		wg_timers_get_last_handshake(peer, &peer_io.p_last_handshake);
 
-		peer_io.p_flags = WG_IO_PEER_PUBLIC;
+		peer_io.p_flags |= WG_IO_PEER_ENDPOINT;
+		memcpy(&peer_io.p_endpoint, &peer->p_endpoint.e_remote,
+			sizeof(peer_io.p_endpoint));
+
+		peer_io.p_flags |= WG_IO_PEER_PUBLIC;
 		if (noise_remote_keys(peer->p_remote, peer_io.p_public,
 			peer_io.p_psk) == 0 ) {
 			if(wgc_privileged(sc))

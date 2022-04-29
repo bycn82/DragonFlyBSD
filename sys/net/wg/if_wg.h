@@ -54,11 +54,11 @@ struct wg_peer_io {
 	struct wg_aip_io	p_aips[];
 };
 
-#define WG_IO_PEER_PUBLIC		(1 << 0)
-#define WG_IO_PEER_PSK			(1 << 1)
-#define WG_IO_PEER_REPLACE_AIPS		(1 << 2)
-#define WG_IO_PEER_REMOVE		(1 << 3)
-#define WG_IO_PEER_PKI			(1 << 4)
+#define WG_IO_PEER_ENDPOINT		(1 << 0)
+#define WG_IO_PEER_PUBLIC		(1 << 1)
+#define WG_IO_PEER_PSK			(1 << 2)
+#define WG_IO_PEER_REPLACE_AIPS		(1 << 3)
+#define WG_IO_PEER_REMOVE		(1 << 4)
 
 struct wg_interface_io {
 	uint8_t			i_flags;

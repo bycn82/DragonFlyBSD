@@ -7,6 +7,10 @@
 #include <sys/malloc.h>
 #include "wg_timer.h"
 
+#ifndef _KERNEL
+#error "This file should not be included by userland programs."
+#endif
+
 #define WG_DEBUG
 
 #ifdef WG_DEBUG
@@ -89,7 +93,7 @@
 #define wg_debug_output_ip(_tag, _s)
 #endif
 
-//#define WG_DEBUG_FUNC
+#define WG_DEBUG_FUNC
 #if defined(WG_DEBUG) && defined(WG_DEBUG_FUNC)
 #define wg_debug_func() wg_debug()
 #else

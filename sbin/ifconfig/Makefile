@@ -29,6 +29,7 @@ SRCS+=	ifgroup.c		# group support
 
 SRCS+=	ifbridge.c		# bridge support
 SRCS+=	iflagg.c		# lagg support
+SRCS+=	ifwg.c			# wireguard support
 
 DPADD=	${LIBBSDXML} ${LIBSBUF}
 LDADD=	-lbsdxml -lsbuf
