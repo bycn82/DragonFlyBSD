@@ -4,12 +4,22 @@
 /* This file contains tools for debug */
 
 #include <sys/time.h>
+#include <sys/timex.h>
 #include <sys/malloc.h>
-#include "wg_timer.h"
+#include "../wg_support.h"
 
 #ifndef _KERNEL
 #error "This file should not be included by userland programs."
 #endif
+
+static inline long
+get_nsec(void)
+{
+	struct timespec uptime;
+	nanouptime(&uptime);
+	return uptime.tv_sec * NANOSECOND + uptime.tv_nsec;
+
+}
 
 #define WG_DEBUG
 
@@ -93,7 +103,7 @@
 #define wg_debug_output_ip(_tag, _s)
 #endif
 
-#define WG_DEBUG_FUNC
+//#define WG_DEBUG_FUNC
 #if defined(WG_DEBUG) && defined(WG_DEBUG_FUNC)
 #define wg_debug_func() wg_debug()
 #else

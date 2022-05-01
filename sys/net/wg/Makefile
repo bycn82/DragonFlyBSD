@@ -3,6 +3,7 @@
 KMOD= if_wg
 
 SRCS = if_wg.c wg_noise.c wg_cookie.c 
+SRCS+= wg_support.c
 SRCS+= opt_inet.h opt_inet6.h
 
 opt_inet.h:

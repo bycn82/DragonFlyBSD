@@ -5,10 +5,14 @@
  */
 
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/timex.h>
+#include <sys/kernel.h>
+#include <sys/malloc.h>
+#include <sys/lock.h>
 
 #include "wg_cookie.h"
-#include "wg_timer.h"
-#include "wg_dragonflybsd.h"
+#include "wg_support.h"
 
 #define COOKIE_MAC1_KEY_LABEL	"mac1----"
 #define COOKIE_COOKIE_KEY_LABEL	"cookie--"
@@ -21,13 +25,17 @@
 #define RATELIMIT_SIZE_MAX	(RATELIMIT_SIZE * 8)
 #define INITIATIONS_PER_SECOND	20
 #define INITIATIONS_BURSTABLE	5
-#define INITIATION_COST		(NSEC_PER_SEC / INITIATIONS_PER_SECOND)
+#define INITIATION_COST		(NANOSECOND / INITIATIONS_PER_SECOND)
 #define TOKEN_MAX		(INITIATION_COST * INITIATIONS_BURSTABLE)
 #define ELEMENT_TIMEOUT		1
 #define IPV4_MASK_SIZE		4 /* Use all 4 bytes of IPv4 address */
 #define IPV6_MASK_SIZE		8 /* Use top 8 bytes (/64) of IPv6 address */
 
-WG_COOKIE_MALLOC_DEFINE();
+MALLOC_DEFINE(M_WG_COOKIE, "WG_COOKIE", "wg cookie");
+#define WG_MALLOC(_size) \
+	kmalloc(_size, M_WG_COOKIE, M_NOWAIT | M_ZERO)
+#define WG_FREE(_p) \
+	kfree(_p, M_WG_COOKIE)
 
 struct ratelimit_key {
 	uint8_t ip[IPV6_MASK_SIZE];
@@ -94,15 +102,15 @@ cookie_checker_init(struct cookie_checker *cc)
 {
 	bzero(cc, sizeof(*cc));
 
-	WG_LOCK_INIT(&cc->cc_key_lock, "cookie_checker_key");
-	WG_LOCK_INIT(&cc->cc_secret_lock, "cookie_checker_secret");
+	lockinit(&cc->cc_key_lock, "cookie_checker_key", 0, LK_CANRECURSE);
+	lockinit(&cc->cc_secret_lock, "cookie_checker_secret", 0, LK_CANRECURSE);
 }
 
 void
 cookie_checker_free(struct cookie_checker *cc)
 {
-	WG_LOCK_UNINIT(&cc->cc_key_lock);
-	WG_LOCK_UNINIT(&cc->cc_secret_lock);
+	lockuninit(&cc->cc_key_lock);
+	lockuninit(&cc->cc_secret_lock);
 	explicit_bzero(cc, sizeof(*cc));
 }
 
@@ -110,7 +118,7 @@ void
 cookie_checker_update(struct cookie_checker *cc,
     const uint8_t key[COOKIE_INPUT_SIZE])
 {
-	WG_LOCK(&cc->cc_key_lock);
+	lockmgr(&cc->cc_key_lock, LK_EXCLUSIVE);
 	if (key) {
 		precompute_key(cc->cc_mac1_key, key, COOKIE_MAC1_KEY_LABEL);
 		precompute_key(cc->cc_cookie_key, key, COOKIE_COOKIE_KEY_LABEL);
@@ -118,7 +126,7 @@ cookie_checker_update(struct cookie_checker *cc,
 		bzero(cc->cc_mac1_key, sizeof(cc->cc_mac1_key));
 		bzero(cc->cc_cookie_key, sizeof(cc->cc_cookie_key));
 	}
-	WG_UNLOCK(&cc->cc_key_lock);
+	lockmgr(&cc->cc_key_lock, LK_RELEASE);
 }
 
 void
@@ -131,10 +139,10 @@ cookie_checker_create_payload(struct cookie_checker *cc,
 	make_cookie(cc, cookie, sa);
 	karc4rand(nonce, COOKIE_NONCE_SIZE);
 
-	WG_SLOCK(&cc->cc_key_lock);
+	lockmgr(&cc->cc_key_lock, LK_SHARED);
 	xchacha20poly1305_encrypt(ecookie, cookie, COOKIE_COOKIE_SIZE,
 	    macs->mac1, COOKIE_MAC_SIZE, nonce, cc->cc_cookie_key);
-	WG_UNLOCK(&cc->cc_key_lock);
+	lockmgr(&cc->cc_key_lock, LK_RELEASE);
 
 	explicit_bzero(cookie, sizeof(cookie));
 }
@@ -145,13 +153,13 @@ cookie_maker_init(struct cookie_maker *cm, const uint8_t key[COOKIE_INPUT_SIZE])
 	bzero(cm, sizeof(*cm));
 	precompute_key(cm->cm_mac1_key, key, COOKIE_MAC1_KEY_LABEL);
 	precompute_key(cm->cm_cookie_key, key, COOKIE_COOKIE_KEY_LABEL);
-	WG_LOCK_INIT(&cm->cm_lock, "cookie_maker");
+	lockinit(&cm->cm_lock, "cookie_maker", 0, LK_CANRECURSE);
 }
 
 void
 cookie_maker_free(struct cookie_maker *cm)
 {
-	WG_LOCK_UNINIT(&cm->cm_lock);
+	lockuninit(&cm->cm_lock);
 	explicit_bzero(cm, sizeof(*cm));
 }
 
@@ -162,7 +170,7 @@ cookie_maker_consume_payload(struct cookie_maker *cm,
 	uint8_t cookie[COOKIE_COOKIE_SIZE];
 	int ret;
 
-	WG_SLOCK(&cm->cm_lock);
+	lockmgr(&cm->cm_lock, LK_SHARED);
 	if (!cm->cm_mac1_sent) {
 		ret = ETIMEDOUT;
 		goto error;
@@ -173,18 +181,18 @@ cookie_maker_consume_payload(struct cookie_maker *cm,
 		ret = EINVAL;
 		goto error;
 	}
-	WG_UNLOCK(&cm->cm_lock);
+	lockmgr(&cm->cm_lock, LK_RELEASE);
 
-	WG_LOCK(&cm->cm_lock);
+	lockmgr(&cm->cm_lock, LK_EXCLUSIVE);
 	memcpy(cm->cm_cookie, cookie, COOKIE_COOKIE_SIZE);
 	getnanouptime(&cm->cm_cookie_birthdate);
 	cm->cm_cookie_valid = true;
 	cm->cm_mac1_sent = false;
-	WG_UNLOCK(&cm->cm_lock);
+	lockmgr(&cm->cm_lock, LK_RELEASE);
 
 	return 0;
 error:
-	WG_UNLOCK(&cm->cm_lock);
+	lockmgr(&cm->cm_lock, LK_RELEASE);
 	return ret;
 }
 
@@ -192,20 +200,20 @@ void
 cookie_maker_mac(struct cookie_maker *cm, struct cookie_macs *macs, void *buf,
     size_t len)
 {
-	WG_LOCK(&cm->cm_lock);
+	lockmgr(&cm->cm_lock, LK_EXCLUSIVE);
 	macs_mac1(macs, buf, len, cm->cm_mac1_key);
 	memcpy(cm->cm_mac1_last, macs->mac1, COOKIE_MAC_SIZE);
 	cm->cm_mac1_sent = true;
 
 	if (cm->cm_cookie_valid &&
-	    !timer_expired(&cm->cm_cookie_birthdate,
+	    !time_expired(&cm->cm_cookie_birthdate,
 	    COOKIE_SECRET_MAX_AGE - COOKIE_SECRET_LATENCY, 0)) {
 		macs_mac2(macs, buf, len, cm->cm_cookie);
 	} else {
 		bzero(macs->mac2, COOKIE_MAC_SIZE);
 		cm->cm_cookie_valid = false;
 	}
-	WG_UNLOCK(&cm->cm_lock);
+	lockmgr(&cm->cm_lock, LK_RELEASE);
 }
 
 int
@@ -216,9 +224,9 @@ cookie_checker_validate_macs(struct cookie_checker *cc, struct cookie_macs *macs
 	uint8_t cookie[COOKIE_COOKIE_SIZE];
 
 	/* Validate incoming MACs */
-	WG_SLOCK(&cc->cc_key_lock);
+	lockmgr(&cc->cc_key_lock, LK_SHARED);
 	macs_mac1(&our_macs, buf, len, cc->cc_mac1_key);
-	WG_UNLOCK(&cc->cc_key_lock);
+	lockmgr(&cc->cc_key_lock, LK_RELEASE);
 
 	/* If mac1 is invald, we want to drop the packet */
 	if (timingsafe_bcmp(our_macs.mac1, macs->mac1, COOKIE_MAC_SIZE) != 0)
@@ -288,15 +296,15 @@ make_cookie(struct cookie_checker *cc, uint8_t cookie[COOKIE_COOKIE_SIZE],
 {
 	struct blake2s_state state;
 
-	WG_LOCK(&cc->cc_secret_lock);
-	if (timer_expired(&cc->cc_secret_birthdate,
+	lockmgr(&cc->cc_secret_lock, LK_EXCLUSIVE);
+	if (time_expired(&cc->cc_secret_birthdate,
 	    COOKIE_SECRET_MAX_AGE, 0)) {
 		karc4rand(cc->cc_secret, COOKIE_SECRET_SIZE);
 		getnanotime(&cc->cc_secret_birthdate);
 	}
 	blake2s_init_key(&state, COOKIE_COOKIE_SIZE, cc->cc_secret,
 	    COOKIE_SECRET_SIZE);
-	WG_UNLOCK(&cc->cc_secret_lock);
+	lockmgr(&cc->cc_secret_lock, LK_RELEASE);
 
 	if (sa->sa_family == AF_INET) {
 		blake2s_update(&state, (uint8_t *)&satosin(sa)->sin_addr,
@@ -321,7 +329,7 @@ static void
 ratelimit_init(struct ratelimit *rl)
 {
 	size_t i;
-	WG_LOCK_INIT(&rl->rl_lock, "ratelimit_lock");
+	lockinit(&rl->rl_lock, "ratelimit_lock", 0, LK_CANRECURSE);
 	callout_init_lk(&rl->rl_gc, &rl->rl_lock);
 	karc4rand(rl->rl_secret, sizeof(rl->rl_secret));
 	for (i = 0; i < RATELIMIT_SIZE; i++)
@@ -332,11 +340,11 @@ ratelimit_init(struct ratelimit *rl)
 static void
 ratelimit_deinit(struct ratelimit *rl)
 {
-	WG_LOCK(&rl->rl_lock);
+	lockmgr(&rl->rl_lock, LK_EXCLUSIVE);
 	callout_stop(&rl->rl_gc);
 	ratelimit_gc(rl, true);
-	WG_UNLOCK(&rl->rl_lock);
-	WG_LOCK_UNINIT(&rl->rl_lock);
+	lockmgr(&rl->rl_lock, LK_RELEASE);
+	lockuninit(&rl->rl_lock);
 }
 
 static void
@@ -407,7 +415,7 @@ ratelimit_allow(struct ratelimit *rl, struct sockaddr *sa)
 		return ret;
 
 	bucket = siphash13(rl->rl_secret, &key, len) & RATELIMIT_MASK;
-	WG_LOCK(&rl->rl_lock);
+	lockmgr(&rl->rl_lock, LK_EXCLUSIVE);
 
 	LIST_FOREACH(r, &rl->rl_table[bucket], r_entry) {
 		if (bcmp(&r->r_key, &key, len) != 0)
@@ -424,7 +432,7 @@ ratelimit_allow(struct ratelimit *rl, struct sockaddr *sa)
 		getnanouptime(&r->r_last_time);
 		timespecsub(&r->r_last_time, &diff, &diff);
 
-		tokens = r->r_tokens + diff.tv_sec * NSEC_PER_SEC + diff.tv_nsec;
+		tokens = r->r_tokens + diff.tv_sec * NANOSECOND + diff.tv_nsec;
 
 		if (tokens > TOKEN_MAX)
 			tokens = TOKEN_MAX;
@@ -444,7 +452,7 @@ ratelimit_allow(struct ratelimit *rl, struct sockaddr *sa)
 		goto error;
 
 	/* Goto error if out of memory */
-	if ((r = WG_COOKIE_MALLOC(sizeof(*r))) == NULL)
+	if ((r = WG_MALLOC(sizeof(*r))) == NULL)
 		goto error;
 
 	rl->rl_table_num++;
@@ -460,7 +468,7 @@ ratelimit_allow(struct ratelimit *rl, struct sockaddr *sa)
 ok:
 	ret = 0;
 error:
-	WG_UNLOCK(&rl->rl_lock);
+	lockmgr(&rl->rl_lock, LK_RELEASE);
 	return ret;
 }
 
@@ -469,3 +477,4 @@ static uint64_t siphash13(const uint8_t key[SIPHASH_KEY_LENGTH], const void *src
 	SIPHASH_CTX ctx;
 	return (SipHashX(&ctx, 1, 3, key, src, len));
 }
+

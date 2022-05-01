@@ -11,7 +11,7 @@
 
 #include "crypto/siphash/siphash.h"
 #include "crypto/crypto.h"
-#include "wg_dragonflybsd.h"
+#include "wg_support.h"
 
 #ifndef _KERNEL
 #error "This file should not be included by userland programs."

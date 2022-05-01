@@ -8,7 +8,7 @@
 #include <sys/systm.h>
 
 #include "crypto.h"
-#include "../wg_dragonflybsd.h"
+#include "../wg_support.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
