@@ -12,7 +12,6 @@
 #include <stdbool.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <err.h>
 #include <resolv.h>
 
 #include "ifconfig.h"
@@ -23,15 +22,25 @@ struct wg_peer_io	*wg_peer = NULL;
 struct wg_aip_io	*wg_aip = NULL;
 
 #define WG_KEY_SIZE_BASE64 (4 * ((WG_KEY_SIZE + 2) / 3)+1)
-#define WG_ERROR_REPORT(_ret, _s) { \
-	if (_ret){\
-		errno = _ret; \
-		err(1, "`%s` %s", __FUNCTION__, _s);\
-		if (wg_interface) { \
-			free(wg_interface); \
-			wg_interface = NULL;\
-		} \
-	}\
+#define WG_ASSERT(_exp, _msg) do {\
+	if(__predict_false(!(_exp))) {\
+		wg_free(); \
+		fprintf(stderr, "assert \"%s\" in %s [%d]: %s.\n", \
+			#_exp, __FUNCTION__, __LINE__,_msg);\
+		exit(1); \
+	} \
+} while(0)
+
+#define WG_PEER_ASSERT()	WG_ASSERT(wg_peer != NULL, "peer not set")
+#define WG_ALLOC_ASSERT(_exp)	WG_ASSERT((_exp) == 0, "failed to allocate memory")
+#define WG_KEY_ASSERT(_exp)	WG_ASSERT((_exp) == 0, "failed to convert key")
+
+static void
+wg_free(void) {
+	if (wg_interface == NULL)
+		return;
+	free(wg_interface);
+	wg_interface = NULL;
 }
 
 static char 
@@ -40,6 +49,7 @@ static char
 	static char buf[64];
 	char *p = "KMGT";
 	int i;
+
 	for (i=0; i<4; i++)
 		if (b<(1ULL<<(10*(i+1))))
 			break;
@@ -92,14 +102,16 @@ static char
 }
 
 static int
-wg_key_to_b64(const char *key, char *b64) {
+wg_key_to_b64(const char *key, char *b64)
+{
 	if (b64_ntop(key, WG_KEY_SIZE, b64, WG_KEY_SIZE_BASE64) < 0)
 		return EINVAL;
 	return 0;
 }
 
 static int
-wg_b64_to_key(const char *b64, char *key) {
+wg_b64_to_key(const char *b64, char *key)
+{
 	if (strlen(b64) != WG_KEY_SIZE_BASE64-1)
 		return EINVAL;
 	if ((b64_pton(b64, key, WG_KEY_SIZE) < 0))
@@ -107,28 +119,26 @@ wg_b64_to_key(const char *b64, char *key) {
 	return 0;
 }
 
-static int
-wg_print(char *indent) {
+static void
+wg_print(char *indent)
+{
 	struct wg_peer_io *peer;
 	struct wg_aip_io *aip;
 	char ibuf[INET6_ADDRSTRLEN+1], hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
 	char b64[WG_KEY_SIZE_BASE64];
 	char *peer_indent = "     ";
 	size_t i, j;
-	int ret = 0;
 
-	if (!wg_interface)
-		goto err;
+	if (wg_interface == NULL)
+		return;
 
 	if (wg_interface->i_flags & WG_IO_INTERFACE_PUBLIC) {
-		if((ret = wg_key_to_b64(wg_interface->i_public, b64)))
-			goto err;
+		WG_KEY_ASSERT(wg_key_to_b64(wg_interface->i_public, b64));
 		printf("%spublic key: %s\n", indent, b64);
 	}
 
 	if (wg_interface->i_flags & WG_IO_INTERFACE_PRIVATE) {
-		if((ret = wg_key_to_b64(wg_interface->i_private, b64)))
-			goto err;
+		WG_KEY_ASSERT(wg_key_to_b64(wg_interface->i_private, b64));
 		printf("%sprivate key: %s\n", indent, b64);
 	}
 
@@ -142,8 +152,7 @@ wg_print(char *indent) {
 	for (i=0; i<wg_interface->i_peers_count; i++) {
 
 		if (peer->p_flags & WG_IO_PEER_PUBLIC) {
-			if((ret = wg_key_to_b64(peer->p_public, b64)))
-				goto err;
+			WG_KEY_ASSERT(wg_key_to_b64(peer->p_public, b64));
 			printf("%speer %s\n", indent, b64);
 		}
 
@@ -161,8 +170,7 @@ wg_print(char *indent) {
 			printf("%s%sreplace allowed ips\n", indent, peer_indent);
 
 		if (peer->p_flags & WG_IO_PEER_PSK) {
-			if((ret = wg_key_to_b64(peer->p_psk, b64)))
-				goto err;
+			WG_KEY_ASSERT(wg_key_to_b64(peer->p_psk, b64));
 			printf("%s%spreshared key: %s\n", indent, peer_indent, b64);
 		}
 
@@ -196,30 +204,19 @@ wg_print(char *indent) {
 			printf("\n");
 		peer = (struct wg_peer_io *)aip;
 	}
-err:
-	return ret;
 }
 
 static void
 wg_status(int s)
 {
-	int ret=0;
-
 	strlcpy(wg_data.wgd_name, name, sizeof(wg_data.wgd_name));
-	if (ioctl(s, SIOCGWG, (caddr_t)&wg_data) < 0)
+	if (ioctl(s, SIOCGWG, (caddr_t)&wg_data) < 0) 
 		return;
-	if (!(wg_interface = wg_data.wgd_interface = malloc(wg_data.wgd_size))) {
-		ret = errno;
-		goto err;
-	}
-	if (ioctl(s, SIOCGWG, (caddr_t)&wg_data) < 0)  {
-		ret = errno;
-		goto err;
-	}
-	ret = wg_print("\t");
-err:
-	free(wg_interface);
-	WG_ERROR_REPORT(ret, "");
+	wg_interface = wg_data.wgd_interface = malloc(wg_data.wgd_size);
+	WG_ASSERT(wg_interface != NULL, "failed to allocate memory");
+	WG_ASSERT(ioctl(s, SIOCGWG, (caddr_t)&wg_data) == 0, strerror(errno));
+	wg_print("\t");
+	wg_free();
 }
 
 static int
@@ -260,50 +257,33 @@ wg_alloc(size_t n)
 static
 DECL_CMD_FUNC(wg_set_key, val, d)
 {
-	int ret=0;
-
-	if((ret = wg_alloc(0)))
-		goto err;
+	WG_ALLOC_ASSERT(wg_alloc(0));
 	wg_interface->i_flags |= WG_IO_INTERFACE_PRIVATE;
-	if((ret = wg_b64_to_key(val, wg_interface->i_private)))
-		goto err;
-err:
-	WG_ERROR_REPORT(ret, "");
+	WG_KEY_ASSERT(wg_b64_to_key(val, wg_interface->i_private));
 }
 
 static
 DECL_CMD_FUNC(wg_set_port, val, d)
 {
 	const char *errmsg = NULL;
-	int ret = 0;
 
-	if((ret = wg_alloc(0)))
-		WG_ERROR_REPORT(ret, "");
+	WG_ALLOC_ASSERT(wg_alloc(0));
 	wg_interface->i_flags |= WG_IO_INTERFACE_PORT;
 	wg_interface->i_port = strtonum(val, 0, 65535, &errmsg);
-	if (errmsg)
-		WG_ERROR_REPORT(EINVAL, errmsg);
+	WG_ASSERT(errmsg == NULL, errmsg);
 }
 
 static
 DECL_CMD_FUNC(wg_remove_all_peers, val, d)
 {
-	int ret=0;
-
-	if((ret = wg_alloc(0)))
-		goto err;
+	WG_ALLOC_ASSERT(wg_alloc(0));
 	wg_interface->i_flags |= WG_IO_INTERFACE_REPLACE_PEERS;
-err:
-	WG_ERROR_REPORT(ret, "");
 }
 
 static
 DECL_CMD_FUNC(wg_set_peer, val, d)
 {
-	int ret=0;
-
-	if((ret = wg_alloc(sizeof(*wg_peer))))
-		goto err;
+	WG_ALLOC_ASSERT(wg_alloc(sizeof(*wg_peer)));
 	if (wg_aip) 
 		wg_peer = (struct wg_peer_io *)wg_aip;
 	else
@@ -311,10 +291,7 @@ DECL_CMD_FUNC(wg_set_peer, val, d)
 	wg_aip = &wg_peer->p_aips[0];
 	wg_interface->i_peers_count++;
 	wg_peer->p_flags |= WG_IO_PEER_PUBLIC;
-	if((ret = wg_b64_to_key(val, wg_peer->p_public)))
-		goto err;
-err:
-	WG_ERROR_REPORT(ret, "");
+	WG_KEY_ASSERT(wg_b64_to_key(val, wg_peer->p_public));
 }
 
 static
@@ -327,13 +304,9 @@ DECL_CMD_FUNC(wg_remove_peer, val, d)
 static
 DECL_CMD_FUNC(wg_set_psk, val, d)
 {
-	int ret = 0;
-
-	if (wg_peer == NULL)
-		WG_ERROR_REPORT(EINVAL, "peer not set");
+	WG_PEER_ASSERT();
 	wg_peer->p_flags |= WG_IO_PEER_PSK;
-	ret = wg_b64_to_key(val, wg_peer->p_psk);
-	WG_ERROR_REPORT(ret, "peer not set");
+	WG_KEY_ASSERT(wg_b64_to_key(val, wg_peer->p_psk));
 }
 
 static
@@ -341,11 +314,9 @@ DECL_CMD_FUNC(wg_set_pki, val, d)
 {
 	const char *errmsg = NULL;
 
-	if (wg_peer == NULL)
-		WG_ERROR_REPORT(EINVAL, "peer not set");
+	WG_PEER_ASSERT();
 	wg_peer->p_pki = strtonum(val, 0, 43200, &errmsg);
-	if (errmsg)
-		WG_ERROR_REPORT(EINVAL, errmsg);
+	WG_ASSERT(errmsg == NULL, errmsg);
 }
 
 static
@@ -355,18 +326,15 @@ DECL_CMD_FUNC(wg_set_endpoint, val, d)
 	struct addrinfo *ai;
 	char *host, *port, *colon;
 
-	if (wg_peer == NULL)
-		WG_ERROR_REPORT(EINVAL, "peer not set");
+	WG_PEER_ASSERT();
 
 	host = strdup(val);
 	colon = rindex(host, ':');
-	if (colon == NULL)
-		WG_ERROR_REPORT(EINVAL, "bad endpoint format [ip:port]" );
+	WG_ASSERT(colon != NULL, "bad endpoint format [ip:port]" );
 	*colon = '\0';
 	port = colon + 1;
-
-	if ((ret = getaddrinfo(host, port, NULL, &ai)) != 0)
-		WG_ERROR_REPORT(ret, gai_strerror(ret));
+	WG_ASSERT((ret = getaddrinfo(host, port, NULL, &ai)) == 0,
+		gai_strerror(ret));
 
 	wg_peer->p_flags |= WG_IO_PEER_ENDPOINT;
 	memcpy(&wg_peer->p_endpoint.p_sa, ai->ai_addr, ai->ai_addrlen);
@@ -376,13 +344,10 @@ DECL_CMD_FUNC(wg_set_endpoint, val, d)
 static
 DECL_CMD_FUNC(wg_set_aip, val, d)
 {
-	int res, ret=0;
+	int res;
 
-	if (wg_peer == NULL)
-		WG_ERROR_REPORT(EINVAL, "peer not set");
-
-	if((ret = wg_alloc(sizeof(*wg_aip))))
-		goto err;
+	WG_PEER_ASSERT();
+	WG_ALLOC_ASSERT(wg_alloc(sizeof(*wg_aip)));
 	
 	if ((res = inet_net_pton(AF_INET, val, &wg_aip->a_addr,
 	    sizeof(wg_aip->a_addr.in))) != -1) {
@@ -390,22 +355,18 @@ DECL_CMD_FUNC(wg_set_aip, val, d)
 	} else if ((res = inet_net_pton(AF_INET6, val, &wg_aip->a_addr,
 	    sizeof(wg_aip->a_addr.in6))) != -1) {
 		wg_aip->a_af = AF_INET6;
-	} else {
-		WG_ERROR_REPORT(EINVAL, "bad address");
 	}
+	WG_ASSERT(res != -1, "bad address");
 
 	wg_aip->a_cidr = res;
 	wg_peer->p_aips_count++;
 	wg_aip++;
-err:
-	WG_ERROR_REPORT(ret, "");
 }
 
 static
 DECL_CMD_FUNC(wg_remove_aips, val, d)
 {
-	if (wg_peer == NULL)
-		WG_ERROR_REPORT(EINVAL, "peer not set");
+	WG_PEER_ASSERT();
 	wg_peer->p_flags |= WG_IO_PEER_REPLACE_AIPS;
 }
 
@@ -413,13 +374,11 @@ static void
 wg_finish(int s, void *arg)
 {
 	strlcpy(wg_data.wgd_name, name, sizeof(wg_data.wgd_name));
-	if (ioctl(s, SIOCSWG, (caddr_t)&wg_data) < 0) {
-		free(wg_interface);
+	if (ioctl(s, SIOCSWG, (caddr_t)&wg_data) < 0) 
 		return;
-	}
 	printf("interface: %s\n", name);
 	wg_print("    ");
-	free(wg_interface);
+	wg_free();
 }
 
 static struct afswtch af_wg = {
@@ -427,6 +386,7 @@ static struct afswtch af_wg = {
 	.af_af		= AF_UNSPEC,
 	.af_other_status = wg_status,
 };
+
 static struct cmd wg_cmds[] = {
 	DEF_CMD_ARG("key", wg_set_key),
 	DEF_CMD_ARG("public-key", wg_set_key),
@@ -449,7 +409,6 @@ static struct cmd wg_cmds[] = {
 
 	DEF_CMD_ARG("ep", wg_set_endpoint),
 	DEF_CMD_ARG("endpoint", wg_set_endpoint),
-
 };
 
 static __constructor(101) void
@@ -463,4 +422,3 @@ wg_ctor(void)
 	callback_register(wg_finish, NULL);
 
 }
-
