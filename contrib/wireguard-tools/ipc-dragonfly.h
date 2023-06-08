@@ -223,7 +223,7 @@ static int kernel_set_device(struct wgdevice *dev)
 				peer->endpoint.addr.sa_family == AF_INET6) &&
 				peer->endpoint.addr.sa_len <= sizeof(peer_io->p_endpoint)) {
 			memcpy(&peer_io->p_endpoint, &peer->endpoint, sizeof(peer->endpoint));
-			peer_io->p_flags != WG_IO_PEER_ENDPOINT;
+			peer_io->p_flags |= WG_IO_PEER_ENDPOINT;
 		}
 
 		if (peer->flags & WGPEER_HAS_PRESHARED_KEY) {
