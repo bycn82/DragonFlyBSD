@@ -44,6 +44,7 @@
 #include <sys/time.h>
 #include <sys/ioccom.h>
 
+
 __BEGIN_DECLS
 
 #define BPF_MAX_CLONES	128
@@ -252,6 +253,7 @@ void	 bpf_gettoken(void);
 void	 bpf_reltoken(void);
 
 u_int	 bpf_filter(const struct bpf_insn *, u_char *, u_int, u_int);
+
 
 #define	BPF_TAP(_ifp,_pkt,_pktlen) do {					\
 	if ((_ifp)->if_bpf) {						\

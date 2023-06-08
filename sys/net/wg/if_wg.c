@@ -280,6 +280,10 @@ struct wg_softc {
 	struct lock		 sc_net_lock;
 };
 
+#define BPF_MTAP_AF(_ifp, _m, _af) do { \
+		bpf_mtap_family((_ifp)->if_bpf, (_m), (_af));	\
+	} while (0)
+	
 static int clone_count;
 static volatile unsigned long peer_counter = 0;
 static const char wgname[] = "wg";
@@ -2129,7 +2133,7 @@ wg_xmit(struct ifnet *ifp, struct mbuf *m, sa_family_t af, uint32_t mtu)
 		goto err_xmit;
 	}
 
-	BPF_MTAP(ifp, m);
+	BPF_MTAP_AF(ifp, m, pkt->p_af);
 	if (__predict_false(peer == NULL)) {
 		if (af == AF_INET)
 			wg_debug_output_ip("no peer for", mtod(m, struct ip*)->ip_dst);
