@@ -156,6 +156,21 @@ wg_print(char *indent)
 			printf("%speer %s\n", indent, b64);
 		}
 
+printf("---flags and -WG_IO_PEER_ENDPOINT-----%d %d\n", peer->p_flags, WG_IO_PEER_ENDPOINT);
+printf("-peer->p_endpoint.p_sin---%s:%d\n",
+       inet_ntoa(
+               (&peer->p_endpoint.p_sin)->sin_addr
+       ),
+       ntohs((&peer->p_endpoint.p_sin)->sin_port)
+);
+
+printf("--peer->p_endpoint.p_sa--%s:%d\n",
+       inet_ntoa(
+               ((struct sockaddr_in *)(&peer->p_endpoint.p_sa))->sin_addr
+       ),
+       ntohs(((struct sockaddr_in *)(&peer->p_endpoint.p_sa))->sin_port)
+);
+
 		if (peer->p_flags & WG_IO_PEER_ENDPOINT)  {
 			if (getnameinfo(&peer->p_endpoint.p_sa,
 				peer->p_endpoint.p_sa.sa_len,
