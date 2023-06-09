@@ -567,9 +567,6 @@ wg_aip_add(struct wg_softc *sc, struct wg_peer *peer, sa_family_t af, const void
 		return (EAFNOSUPPORT);
 	}
 
-wg_debug_output_ip("aip ip", aip->a_addr.in);
-wg_debug_output_ip("aip mask", aip->a_mask.in);
-
 	lockmgr(&lk, LK_EXCLUSIVE);
 	node = root->rnh_addaddr((char*)&aip->a_addr, (char*)&aip->a_mask, root, (void *)aip->a_nodes);
 	if (node == aip->a_nodes) {
@@ -856,8 +853,6 @@ wg_send(struct wg_softc *sc, struct wg_endpoint *e, struct mbuf *m)
 			control = sbcreatecontrol((caddr_t)&e->e_local.l_in,
 			    sizeof(struct in_addr), IP_SENDSRCADDR,
 			    IPPROTO_IP);
-		wg_debug_output_ip("local", e->e_local.l_in);
-		wg_debug_output_ip("remote", e->e_remote.r_sin.sin_addr);
 #ifdef INET6
 	} else if (e->e_remote.r_sa.sa_family == AF_INET6) {
 		if (!IN6_IS_ADDR_UNSPECIFIED(&e->e_local.l_in6))
@@ -882,8 +877,6 @@ wg_send(struct wg_softc *sc, struct wg_endpoint *e, struct mbuf *m)
 		ret = so_pru_sosend(so6, sa, NULL, m, control, 0, curthread);
 	else {
 		ret = ENOTCONN;
-		wg_debug_pkt_timer_print("failed %d", ret);
-		wg_debug_output("failed %d", ret);
 		m_freem(control);
 		m_freem(m);
 	}
@@ -1304,16 +1297,12 @@ wg_handshake(struct wg_softc *sc, struct wg_packet *pkt)
 		}
 	}
 
-
-
 	m = pkt->p_mbuf;
 	e = &pkt->p_endpoint;
 
 	if ((pkt->p_mbuf = m = m_pullup(m, m->m_pkthdr.len)) == NULL)
 		goto error;
 		
-wg_debug("wg packet type = %d", *mtod(m, uint32_t *));
-
 	switch (*mtod(m, uint32_t *)) {
 	case WG_PKT_INITIATION:
 		init = mtod(m, struct wg_pkt_initiation *);
@@ -1716,7 +1705,7 @@ wg_deliver_in(void *ctx, int pending)
 		m->m_pkthdr.rcvif = ifp;
 
 		lockmgr(&sc->sc_net_lock, LK_EXCLUSIVE);
-		BPF_MTAP(ifp, m);
+		BPF_MTAP_AF(ifp, m, pkt->p_af);
 
 		if (pkt->p_af == AF_INET)
 			netisr_queue(NETISR_IP, m);
@@ -2135,7 +2124,6 @@ wg_xmit(struct ifnet *ifp, struct mbuf *m, sa_family_t af, uint32_t mtu)
 
 	if ((pkt = wg_packet_alloc(m)) == NULL) {
 		rc = ENOBUFS;
-kprintf("-----%d\n", __LINE__);
 		goto err_xmit;
 	}
 	
@@ -2144,7 +2132,6 @@ kprintf("-----%d\n", __LINE__);
 	pkt->p_af = af;
 
 	if (af == AF_INET) {
-wg_debug_output_ip("looking peer for ip", mtod(m, struct ip*)->ip_dst);
 		peer = wg_aip_lookup(sc, AF_INET, &mtod(m, struct ip *)->ip_dst);
 	} else if (af == AF_INET6) {
 		peer = wg_aip_lookup(sc, AF_INET6, &mtod(m, struct ip6_hdr *)->ip6_dst);
@@ -2162,15 +2149,12 @@ wg_debug_output_ip("looking peer for ip", mtod(m, struct ip*)->ip_dst);
 	}
 
 	peer_af = peer->p_endpoint.e_remote.r_sa.sa_family;
-wg_debug_output_ip("peer ip", peer->p_endpoint.e_remote.r_sin.sin_addr);
-kprintf("-------peer_af---%d\n", peer_af);
-if (__predict_false(peer_af != AF_INET && peer_af != AF_INET6)) {
-	DPRINTF(sc, "No valid endpoint has been configured or "
-		    "discovered for peer %" PRIu64 "\n", peer->p_id);
-	rc = EHOSTUNREACH;
-	goto err_peer;
-}
-kprintf("----------%d\n", __LINE__);
+	if (__predict_false(peer_af != AF_INET && peer_af != AF_INET6)) {
+		DPRINTF(sc, "No valid endpoint has been configured or "
+			    "discovered for peer %" PRIu64 "\n", peer->p_id);
+		rc = EHOSTUNREACH;
+		goto err_peer;
+	}
 
 	wg_queue_push_staged(&peer->p_stage_queue, pkt);
 	wg_peer_send_staged(peer);
@@ -2360,7 +2344,7 @@ wgc_set(struct wg_softc *sc, struct wg_data_io *wgd)
 			ret = EINVAL;
 			goto error;
 		}
-wg_debug_output_ip("endpoint ip", peer_io.p_endpoint.p_sin.sin_addr);
+
 		if (noise_local_keys(sc->sc_local, public, NULL) == 0 &&
 			bcmp(public, peer_io.p_public, WG_KEY_SIZE) == 0)
 			goto next_peer;
@@ -2427,14 +2411,12 @@ wg_debug("ret = %d", ret);
 		}
 
 		if (need_insert) {
-			wg_debug_ioctl("insert peer");
 			if ((ret = noise_remote_enable(peer->p_remote)) != 0)
 				goto error;
 
 			TAILQ_INSERT_TAIL(&sc->sc_peers, peer, p_entry);
 			sc->sc_peers_num++;
 			if (sc->sc_ifp->if_link_state & LINK_STATE_UP) {
-				wg_debug_ioctl("timer enable peer");
 				wg_timers_enable(peer);
 			}
 		}
@@ -2520,8 +2502,6 @@ wgc_get(struct wg_softc *sc, struct wg_data_io *wgd)
 		peer_io.p_flags |= WG_IO_PEER_ENDPOINT;
 		memcpy(&peer_io.p_endpoint, &peer->p_endpoint.e_remote,
 			sizeof(peer_io.p_endpoint));
-
-wg_debug_output_ip("endpoint ip", peer_io.p_endpoint.p_sin.sin_addr);
 
 		peer_io.p_flags |= WG_IO_PEER_PUBLIC;
 		if (noise_remote_keys(peer->p_remote, peer_io.p_public,
