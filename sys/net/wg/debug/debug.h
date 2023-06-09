@@ -24,42 +24,42 @@ get_nsec(void)
 #define WG_DEBUG
 
 #ifdef WG_DEBUG
-#define wg_debug(_fmt, ... ){ \
-	kprintf( "[wg %5d] [%30s]", __LINE__, __FUNCTION__ ); \
+#define wg_debug(_fmt, ... ) do { \
+	kprintf( "[%5d][%s]", __LINE__, __FUNCTION__ ); \
 	kprintf( " "_fmt , ##__VA_ARGS__ ); \
 	kprintf( "\n");  \
-}
+} while (0)
 
-#define wg_debug_ip(_tag, _s) { \
+#define wg_debug_ip(_tag, _s) do { \
 	unsigned char sip[16]; \
 	kinet_ntoa(_s, sip); \
-	wg_debug("[%s] %s", _tag, sip); \
-}
+	wg_debug("%s = %s", _tag, sip); \
+} while (0)
 
 #else
 #define wg_debug( _fmt, ... )
 #define wg_debug_ip(_tag, _s)
 #endif
 
-//#define WG_DEBUG_IOCTL
+#define WG_DEBUG_IOCTL
 #if defined(WG_DEBUG) && defined(WG_DEBUG_IOCTL)
 #define wg_debug_ioctl(_fmt, ...) wg_debug(_fmt, ##__VA_ARGS__)
 #else
 #define wg_debug_ioctl(_fmt, ...)
 #endif
 
-//#define WG_DEBUG_PKT
+#define WG_DEBUG_PKT
 #if defined(WG_DEBUG) && defined(WG_DEBUG_PKT)
 #define wg_debug_pkt_timer_define()  \
 	long p_debug_timer;\
 	long p_debug_timer_last;
 
-#define wg_debug_pkt_timer_init(_p) { \
+#define wg_debug_pkt_timer_init(_p) do { \
 	(_p)->p_debug_timer = get_nsec();\
 	(_p)->p_debug_timer_last = (_p)->p_debug_timer; \
-}
+} while (0)
 
-#define wg_debug_pkt_timer(_p) { \
+#define wg_debug_pkt_timer(_p) do { \
 	long t0, t1, ms, us, ms0, us0;  \
 	t0 = (_p)->p_debug_timer_last; \
 	t1 = (_p)->p_debug_timer_last = get_nsec();\
@@ -74,7 +74,7 @@ get_nsec(void)
 		ms0, us0, \
 		ms, us\
 		);\
-}
+} while (0)
 
 #define wg_debug_pkt_timer_print(_fmt, ...) wg_debug(_fmt, ##__VA_ARGS__)
 #else
@@ -85,7 +85,7 @@ get_nsec(void)
 #endif /* WG_DEBUG_PKT */
 
 
-//#define WG_DEBUG_INPUT
+#define WG_DEBUG_INPUT
 #if defined(WG_DEBUG) && defined(WG_DEBUG_INPUT)
 #define wg_debug_input(_fmt, ...) wg_debug(_fmt, ##__VA_ARGS__)
 #define wg_debug_input_ip(_tag, _s) wg_debug_ip(_tag, _s)
@@ -94,7 +94,7 @@ get_nsec(void)
 #define wg_debug_input_ip(_tag, _s)
 #endif
 
-//#define WG_DEBUG_OUTPUT
+#define WG_DEBUG_OUTPUT
 #if defined(WG_DEBUG) && defined(WG_DEBUG_OUTPUT)
 #define wg_debug_output(_fmt, ...) wg_debug(_fmt, ##__VA_ARGS__)
 #define wg_debug_output_ip(_tag, _s) wg_debug_ip(_tag, _s)
@@ -103,21 +103,21 @@ get_nsec(void)
 #define wg_debug_output_ip(_tag, _s)
 #endif
 
-//#define WG_DEBUG_FUNC
+#define WG_DEBUG_FUNC
 #if defined(WG_DEBUG) && defined(WG_DEBUG_FUNC)
 #define wg_debug_func() wg_debug()
 #else
 #define wg_debug_func()
 #endif
 
-//#define WG_DEBUG_LOCK
+#define WG_DEBUG_LOCK
 #if defined(WG_DEBUG) && defined(WG_DEBUG_LOCK)
 #define wg_debug_lock(_fmt, ...) wg_debug(_fmt, ##__VA_ARGS__)
 #else
 #define wg_debug_lock(_fmt, ...)
 #endif
 
-//#define WG_DEBUG_TASK
+#define WG_DEBUG_TASK
 #if defined(WG_DEBUG) && defined(WG_DEBUG_TASK)
 #define wg_debug_task(_fmt, ...) wg_debug(_fmt, ##__VA_ARGS__)
 #else
