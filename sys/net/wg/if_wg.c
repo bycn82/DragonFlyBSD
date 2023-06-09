@@ -571,16 +571,12 @@ wg_debug_output_ip("aip ip", aip->a_addr.in);
 wg_debug_output_ip("aip mask", aip->a_mask.in);
 
 	lockmgr(&lk, LK_EXCLUSIVE);
-kprintf("-----%d\n", __LINE__);
 	node = root->rnh_addaddr((char*)&aip->a_addr, (char*)&aip->a_mask, root, (void *)aip->a_nodes);
-kprintf("-----%d\n", __LINE__);
 	if (node == aip->a_nodes) {
 		LIST_INSERT_HEAD(&peer->p_aips, aip, a_entry);
 		peer->p_aips_num++;
 	} else if (!node) {
-kprintf("-----%d\n", __LINE__);
 		node = root->rnh_lookup((char*)&aip->a_addr, (char*)&aip->a_mask, root);
-kprintf("-----%d\n", __LINE__);
 	}
 	
 	if (!node) {
@@ -1747,8 +1743,9 @@ wg_packet_alloc(struct mbuf *m)
 	wg_debug_func();
 	struct wg_packet *pkt;
 
-	if ((pkt = WG_MALLOC(sizeof(*pkt))) == NULL)
+	if ((pkt = WG_MALLOC(sizeof(*pkt))) == NULL) {
 		return (NULL);
+	}
 	pkt->p_mbuf = m;
 	wg_debug_pkt_timer_init(pkt);
 	return (pkt);
@@ -2135,25 +2132,28 @@ wg_xmit(struct ifnet *ifp, struct mbuf *m, sa_family_t af, uint32_t mtu)
 		goto err_xmit;
 	}
 
+
 	if ((pkt = wg_packet_alloc(m)) == NULL) {
 		rc = ENOBUFS;
+kprintf("-----%d\n", __LINE__);
 		goto err_xmit;
 	}
+	
 	wg_debug_pkt_timer(pkt);
 	pkt->p_mtu = mtu;
 	pkt->p_af = af;
 
 	if (af == AF_INET) {
+wg_debug_output_ip("looking peer for ip", mtod(m, struct ip*)->ip_dst);
 		peer = wg_aip_lookup(sc, AF_INET, &mtod(m, struct ip *)->ip_dst);
-		wg_debug_output_ip("peer ip", mtod(m, struct ip*)->ip_dst);
 	} else if (af == AF_INET6) {
 		peer = wg_aip_lookup(sc, AF_INET6, &mtod(m, struct ip6_hdr *)->ip6_dst);
 	} else {
 		rc = EAFNOSUPPORT;
 		goto err_xmit;
 	}
-
 	BPF_MTAP_AF(ifp, m, pkt->p_af);
+
 	if (__predict_false(peer == NULL)) {
 		if (af == AF_INET)
 			wg_debug_output_ip("no peer for", mtod(m, struct ip*)->ip_dst);
@@ -2162,12 +2162,15 @@ wg_xmit(struct ifnet *ifp, struct mbuf *m, sa_family_t af, uint32_t mtu)
 	}
 
 	peer_af = peer->p_endpoint.e_remote.r_sa.sa_family;
-	if (__predict_false(peer_af != AF_INET && peer_af != AF_INET6)) {
-		DPRINTF(sc, "No valid endpoint has been configured or "
-			    "discovered for peer %" PRIu64 "\n", peer->p_id);
-		rc = EHOSTUNREACH;
-		goto err_peer;
-	}
+wg_debug_output_ip("peer ip", peer->p_endpoint.e_remote.r_sin.sin_addr);
+kprintf("-------peer_af---%d\n", peer_af);
+if (__predict_false(peer_af != AF_INET && peer_af != AF_INET6)) {
+	DPRINTF(sc, "No valid endpoint has been configured or "
+		    "discovered for peer %" PRIu64 "\n", peer->p_id);
+	rc = EHOSTUNREACH;
+	goto err_peer;
+}
+kprintf("----------%d\n", __LINE__);
 
 	wg_queue_push_staged(&peer->p_stage_queue, pkt);
 	wg_peer_send_staged(peer);
