@@ -219,15 +219,12 @@ static int kernel_set_device(struct wgdevice *dev)
 		peer_io->p_flags = WG_IO_PEER_PUBLIC;
 		memcpy(peer_io->p_public, peer->public_key, sizeof(peer_io->p_public));
 		
-printf("-----peer sa family %d\n", peer->endpoint.addr.sa_family);
 		if((peer->endpoint.addr.sa_family == AF_INET ||
 				peer->endpoint.addr.sa_family == AF_INET6) &&
 				peer->endpoint.addr.sa_len <= sizeof(peer_io->p_endpoint)) {
 			memcpy(&peer_io->p_endpoint, &peer->endpoint, sizeof(peer->endpoint));
 			peer_io->p_flags |= WG_IO_PEER_ENDPOINT;
 		}
-printf("-----peer sa family %d\n", peer->endpoint.addr.sa_family);
-printf("-----peer_io sa family %d\n", peer_io->p_endpoint.p_sa.sa_family);
 
 		if (peer->flags & WGPEER_HAS_PRESHARED_KEY) {
 			memcpy(peer_io->p_psk, peer->preshared_key, sizeof(peer_io->p_psk));
