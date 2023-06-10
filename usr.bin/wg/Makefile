@@ -4,6 +4,7 @@ WARNS?=	3
 .PATH: ${.CURDIR}/../../contrib/wireguard-tools
 
 WARNS?=	3
+NOSHARED?=	YES
 
 SRCS+=	wg.c
 
