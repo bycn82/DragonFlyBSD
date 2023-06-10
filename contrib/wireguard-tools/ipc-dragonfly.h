@@ -219,7 +219,7 @@ static int kernel_set_device(struct wgdevice *dev)
 		peer_io->p_flags = WG_IO_PEER_PUBLIC;
 		memcpy(peer_io->p_public, peer->public_key, sizeof(peer_io->p_public));
 		
-		if((peer->endpoint.addr.sa_family = AF_INET ||
+		if((peer->endpoint.addr.sa_family == AF_INET ||
 				peer->endpoint.addr.sa_family == AF_INET6) &&
 				peer->endpoint.addr.sa_len <= sizeof(peer_io->p_endpoint)) {
 			memcpy(&peer_io->p_endpoint, &peer->endpoint, sizeof(peer->endpoint));
