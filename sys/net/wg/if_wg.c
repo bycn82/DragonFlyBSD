@@ -190,7 +190,6 @@ struct wg_packet {
 		WG_PACKET_CRYPTED,
 		WG_PACKET_DEAD,
 	}			 p_state;
-	wg_debug_pkt_timer_define()
 };
 
 STAILQ_HEAD(wg_packet_list, wg_packet);
@@ -884,11 +883,6 @@ wg_send(struct wg_softc *sc, struct wg_endpoint *e, struct mbuf *m)
 	if (ret == 0) {
 		IFNET_STAT_INC(sc->sc_ifp, opackets, 1);
 		IFNET_STAT_INC(sc->sc_ifp, obytes, len);
-		wg_debug_pkt_timer_print("ok");
-		wg_debug_output("ok");
-	} else {
-		wg_debug_pkt_timer_print("failed %d", ret);
-		wg_debug_output("failed %d", ret);
 	}
 	return (ret);
 }
@@ -1634,7 +1628,6 @@ wg_deliver_out(void *ctx, int pending)
 		if (pkt->p_state != WG_PACKET_CRYPTED)
 			goto error;
 
-		wg_debug_pkt_timer(pkt);
 		m = pkt->p_mbuf;
 		pkt->p_mbuf = NULL;
 
@@ -1678,7 +1671,6 @@ wg_deliver_in(void *ctx, int pending)
 		if (pkt->p_state != WG_PACKET_CRYPTED)
 			goto error;
 
-		wg_debug_pkt_timer(pkt);
 		m = pkt->p_mbuf;
 		if (noise_keypair_nonce_check(pkt->p_keypair, pkt->p_nonce) != 0)
 			goto error;
@@ -1736,7 +1728,6 @@ wg_packet_alloc(struct mbuf *m)
 		return (NULL);
 	}
 	pkt->p_mbuf = m;
-	wg_debug_pkt_timer_init(pkt);
 	return (pkt);
 }
 
@@ -1993,8 +1984,6 @@ wg_input(struct mbuf *m, struct sockaddr *sa, struct wg_softc *sc)
 		return;
 	}
 
-	wg_debug_pkt_timer(pkt);
-
 	/* Save send/recv address and port for later. */
 	if (sa->sa_family == AF_INET) {
 		sin = (const struct sockaddr_in *)sa;
@@ -2121,13 +2110,11 @@ wg_xmit(struct ifnet *ifp, struct mbuf *m, sa_family_t af, uint32_t mtu)
 		goto err_xmit;
 	}
 
-
 	if ((pkt = wg_packet_alloc(m)) == NULL) {
 		rc = ENOBUFS;
 		goto err_xmit;
 	}
 	
-	wg_debug_pkt_timer(pkt);
 	pkt->p_mtu = mtu;
 	pkt->p_af = af;
 
@@ -2139,6 +2126,7 @@ wg_xmit(struct ifnet *ifp, struct mbuf *m, sa_family_t af, uint32_t mtu)
 		rc = EAFNOSUPPORT;
 		goto err_xmit;
 	}
+
 	BPF_MTAP_AF(ifp, m, pkt->p_af);
 
 	if (__predict_false(peer == NULL)) {
