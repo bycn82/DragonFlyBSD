@@ -45,7 +45,7 @@ depending on the options for the information presented.
 .It Xo
 .Bk -words
 .Nm
-.Op Fl AaLlnPSW
+.Op Fl 46AaLlnPSW
 .Op Fl c Ar cpu
 .Op Fl f Ar protocol_family | Fl p Ar protocol
 .Op Fl M Ar core
@@ -301,6 +301,8 @@ The following address families, protocol families and protocols are recognized:
 The program will complain if
 .Ar protocol
 is unknown or if there is no statistics routine for it.
+.It Fl 4/6
+The option is equivalent to -f inet/inet6.
 .It Fl l
 The
 .Fl l

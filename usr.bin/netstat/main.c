@@ -218,8 +218,18 @@ main(int argc, char **argv)
 
 	af = AF_UNSPEC;
 
-	while ((ch = getopt(argc, argv, "Aabc:df:ghI:iLlM:mN:nPp:rSsBtuWw:z")) != -1)
+	while ((ch = getopt(argc, argv, "46Aabc:df:ghI:iLlM:mN:nPp:rSsBtuWw:z")) != -1)
 		switch(ch) {
+		case '4':
+			af = AF_INET;
+			break;
+		case '6':
+#ifdef INET6
+			af = AF_INET6;
+#else
+			errx(1, "IPv6 support is not compiled in");
+#endif
+			break;
 		case 'A':
 			Aflag = 1;
 			break;
