@@ -25,7 +25,7 @@ get_nsec(void)
 
 #ifdef WG_DEBUG
 #define wg_debug(_fmt, ... ) do { \
-	kprintf( "[%5d][%s]", __LINE__, __FUNCTION__ ); \
+	kprintf( "%d[%5d][%s]", mycpuid, __LINE__, __FUNCTION__ ); \
 	kprintf( " "_fmt , ##__VA_ARGS__ ); \
 	kprintf( "\n");  \
 } while (0)

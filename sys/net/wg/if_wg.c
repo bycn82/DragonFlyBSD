@@ -378,14 +378,12 @@ static void wg_module_deinit(void);
 static struct if_clone wg_cloner = 
 	IF_CLONE_INITIALIZER("wg", wg_clone_create, wg_clone_destroy, 0, IF_MAXUNIT);
 
-
-/* TODO Peer */
 static struct wg_peer *
 wg_peer_alloc(struct wg_softc *sc, const uint8_t pub_key[WG_KEY_SIZE])
 {
+	wg_debug_func();
 	struct wg_peer *peer;
 
-	wg_debug_func();
 	if ((peer = WG_MALLOC(sizeof(*peer))) == NULL)
 		goto free_none;
 
@@ -437,9 +435,9 @@ free_none:
 static void
 wg_peer_free_deferred(struct noise_remote *r)
 {
+	wg_debug_func();
 	struct wg_peer *peer = noise_remote_arg(r);
 
-	wg_debug_func();
 	/* While there are no references remaining, we may still have
 	 * p_{send,recv} executing (think empty queue, but wg_deliver_{in,out}
 	 * needs to check the queue. We should wait for them and then free. */
@@ -462,9 +460,9 @@ wg_peer_free_deferred(struct noise_remote *r)
 static void
 wg_peer_destroy(struct wg_peer *peer)
 {
+	wg_debug_func();
 	struct wg_softc *sc = peer->p_sc;
 
-	wg_debug_func();
 	/* Disable remote and timers. This will prevent any new handshakes
 	 * occuring. */
 	noise_remote_disable(peer->p_remote);
@@ -486,8 +484,9 @@ wg_peer_destroy(struct wg_peer *peer)
 static void
 wg_peer_destroy_all(struct wg_softc *sc)
 {
-	struct wg_peer *peer, *tpeer;
 	wg_debug_func();
+	struct wg_peer *peer, *tpeer;
+
 	TAILQ_FOREACH_MUTABLE(peer, &sc->sc_peers, p_entry, tpeer)
 		wg_peer_destroy(peer);
 }
@@ -495,11 +494,11 @@ wg_peer_destroy_all(struct wg_softc *sc)
 static void
 wg_peer_set_endpoint(struct wg_peer *peer, struct wg_endpoint *e)
 {
+	wg_debug_func();
 	KKASSERT(e->e_remote.r_sa.sa_family != 0);
 	if (memcmp(e, &peer->p_endpoint, sizeof(*e)) == 0)
 		return;
 
-	wg_debug_func();
 	lockmgr(&peer->p_endpoint_lock, LK_EXCLUSIVE);
 	peer->p_endpoint = *e;
 	lockmgr(&peer->p_endpoint_lock, LK_RELEASE);
@@ -527,13 +526,13 @@ wg_peer_get_endpoint(struct wg_peer *peer, struct wg_endpoint *e)
 static int
 wg_aip_add(struct wg_softc *sc, struct wg_peer *peer, sa_family_t af, const void *addr, uint8_t cidr)
 {
+	wg_debug_func();
 	struct radix_node_head	*root;
 	struct lock		 lk;
 	struct radix_node	*node;
 	struct wg_aip		*aip;
 	int			 ret = 0;
 
-	wg_debug_func();
 	if ((aip = WG_MALLOC(sizeof(*aip))) == NULL)
 		return (ENOBUFS);
 	aip->a_peer = peer;
@@ -596,13 +595,13 @@ wg_aip_add(struct wg_softc *sc, struct wg_peer *peer, sa_family_t af, const void
 static struct wg_peer *
 wg_aip_lookup(struct wg_softc *sc, sa_family_t af, void *a)
 {
+	wg_debug_func();
 	struct radix_node_head	*root;
 	struct lock		 *lk;
 	struct radix_node	*node;
 	struct wg_peer		*peer;
 	struct aip_addr		 addr;
 
-	wg_debug_func();
 	switch (af) {
 	case AF_INET:
 
@@ -638,9 +637,9 @@ wg_aip_lookup(struct wg_softc *sc, sa_family_t af, void *a)
 static void
 wg_aip_remove_all(struct wg_softc *sc, struct wg_peer *peer)
 {
+	wg_debug_func();
 	struct wg_aip		*aip, *taip;
 
-	wg_debug_func();
 	lockmgr(&sc->sc_aip4_lock, LK_EXCLUSIVE);
 	LIST_FOREACH_MUTABLE(aip, &peer->p_aips, a_entry, taip) {
 		if (aip->a_af == AF_INET) {
@@ -739,10 +738,10 @@ static int wg_socket_set_sockopt(struct socket *so4, struct socket *so6, int nam
 
 static int wg_socket_set_cookie(struct wg_softc *sc, uint32_t user_cookie)
 {
+	wg_debug_func();
 	struct wg_socket *so = &sc->sc_socket;
 	int ret;
 
-	wg_debug_func();
 	ret = wg_socket_set_sockopt(so->so_so4, so->so_so6, SO_USER_COOKIE, &user_cookie, sizeof(user_cookie));
 	if (!ret)
 		so->so_user_cookie = user_cookie;
@@ -1940,7 +1939,6 @@ wg_so_upcall(struct socket *so, void *arg, int waitflag)
 		sb.sb_mb->m_pkthdr.len = 0;
 		for (m = sb.sb_mb; m != NULL; m = m->m_next)
 			sb.sb_mb->m_pkthdr.len += m->m_len;
-
 		wg_input(sb.sb_mb, sa, arg);
 		if (sa != NULL)
 			kfree(sa, M_SONAME);
@@ -2007,7 +2005,6 @@ wg_input(struct mbuf *m, struct sockaddr *sa, struct wg_softc *sc)
 	    (m->m_pkthdr.len == sizeof(struct wg_pkt_cookie) &&
 		*mtod(m, uint32_t *) == WG_PKT_COOKIE)) {
 
-		wg_debug_input("handshake");
 		if (wg_queue_enqueue_handshake(&sc->sc_handshake_queue, pkt) != 0) {
 			IFNET_STAT_INC(sc->sc_ifp, ierrors, 1);
 			DPRINTF(sc, "Dropping handshake packet\n");
@@ -2016,12 +2013,10 @@ wg_input(struct mbuf *m, struct sockaddr *sa, struct wg_softc *sc)
 	} else if (m->m_pkthdr.len >= sizeof(struct wg_pkt_data) +
 	    NOISE_AUTHTAG_LEN && *mtod(m, uint32_t *) == WG_PKT_DATA) {
 
-		wg_debug_input("data");
 		/* Pullup whole header to read r_idx below. */
 		if ((pkt->p_mbuf = m_pullup(m, sizeof(struct wg_pkt_data))) == NULL)
 			goto error;
 
-		wg_debug_input("data pass pullup");
 		data = mtod(pkt->p_mbuf, struct wg_pkt_data *);
 		if ((pkt->p_keypair = noise_keypair_lookup(sc->sc_local, data->r_idx)) == NULL)
 			goto error;
@@ -2037,7 +2032,6 @@ wg_input(struct mbuf *m, struct sockaddr *sa, struct wg_softc *sc)
 	}
 	return;
 error:
-	wg_debug_input("error");
 	IFNET_STAT_INC(sc->sc_ifp, ierrors, 1);
 	wg_packet_free(pkt);
 }
@@ -2165,6 +2159,7 @@ determine_af_and_pullup(struct mbuf **m, sa_family_t *af)
 {
 	wg_debug_func();
 	u_char ipv;
+
 	if ((*m)->m_pkthdr.len >= sizeof(struct ip6_hdr))
 		*m = m_pullup(*m, sizeof(struct ip6_hdr));
 	else if ((*m)->m_pkthdr.len >= sizeof(struct ip))
@@ -2545,12 +2540,12 @@ ret_size:
 static int
 wg_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data, struct ucred *cred)
 {
+	wg_debug_func();
 	struct wg_data_io *wgd = (struct wg_data_io *)data;
 	struct ifreq *ifr = (struct ifreq *)data;
 	struct wg_softc *sc;
 	int ret = 0;
 
-	wg_debug_func();
 	lockmgr(&wg_lock, LK_SHARED);
 	sc = ifp->if_softc;
 	if (!sc) {
