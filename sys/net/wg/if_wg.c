@@ -1418,9 +1418,12 @@ wg_mbuf_reset(struct mbuf *m)
 {
 	wg_debug_func();
 	M_ASSERTPKTHDR(m);
-
-	/* just cleanup the m_flags */
-	m->m_flags = 0;
+	int remove_flags =
+		M_PROTOFLAGS | M_BCAST | M_MCAST | M_VLANTAG |
+		M_HASH | M_CKHASH |
+		M_LENCHECKED
+		;
+	m->m_flags &= ~remove_flags;
 	m_tag_init(m);
 	m->m_pkthdr.csum_flags = 0;
 }
